@@ -20,19 +20,19 @@ author = "oxo-flow-community"
 name = "aggregate_sample"
 description = "Put one sample's four tool outputs on the common long table"
 input = [
-    "{config.out_dir}/telescope/{sample}/{sample}.report.tsv",
-    "{config.out_dir}/tetranscripts/{sample}/{sample}.cntTable",
-    "{config.out_dir}/squire/{sample}/{sample}_TEcounts.txt",
-    "{config.out_dir}/squire/{sample}/{sample}_subFcounts.txt",
-    "{config.out_dir}/ervmap/{sample}/{sample}.locus.tsv",
+    "{config.out_dir}/telescope/{group}/{sample}/{sample}.report.tsv",
+    "{config.out_dir}/tetranscripts/{group}/{sample}/{sample}.cntTable",
+    "{config.out_dir}/squire/{group}/{sample}/{sample}_TEcounts.txt",
+    "{config.out_dir}/squire/{group}/{sample}/{sample}_subFcounts.txt",
+    "{config.out_dir}/ervmap/{group}/{sample}/{sample}.locus.tsv",
     "{config.out_dir}/annotation/te_locus_map.tsv",
     "{config.out_dir}/annotation/ervmap_annotation.tsv",
 ]
-output = ["{config.out_dir}/aggregate/per_sample/{sample}.long.tsv.gz"]
-log = "{config.out_dir}/logs/aggregate/{sample}.log"
+output = ["{config.out_dir}/aggregate/per_sample/{group}/{sample}.long.tsv.gz"]
+log = "{config.out_dir}/logs/aggregate/{group}/{sample}.log"
 shell = """
-mkdir -p {config.out_dir}/aggregate/per_sample "$(dirname {log})"
-python3 scripts/aggregate_expression.py {config.out_dir} {sample} \
+mkdir -p {config.out_dir}/aggregate/per_sample/{group} "$(dirname {log})"
+python3 scripts/aggregate_expression.py {config.out_dir} {group} {sample} \
     {input[5]} {input[6]} 2> {log}
 """
 

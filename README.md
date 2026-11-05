@@ -26,6 +26,12 @@ All stages form one DAG. Run one stage only with
 `alignment::* / annotation::* / ervmap::* / telescope::* / tetranscripts::* /
 squire::* / aggregate::*`).
 
+**Cohorts are a directory level, not a naming convention.** Each
+`[[sample_groups]]` entry becomes `{group}`, and every per-sample output keeps
+the source layout `{out_dir}/{tool}/{group}/{sample}/...` (the source called this
+level `cohort`). Sample names may repeat across groups; the aggregation tables
+carry a `group` column and are computed per group.
+
 ## Installation
 
 ### 1. Install oxo-flow
@@ -52,7 +58,8 @@ cd oxo-flow-erv
   - `genome_fa` — primary assembly FASTA
   - `gene_gtf` — GENCODE GTF (featureCounts + TEcount)
   - `rmsk_table` — UCSC `hg38_rmsk.txt` (RepeatMasker table, 17 columns)
-  - `ervmap_bed` — the official ERVmap BED with a `chr` prefix (3,220 rows)
+  - `ervmap_bed` — the ERVmap 3,220-provirus BED **with the `chr` prefix**
+    (the official file has none; see "How ERVmap is run")
   - `star_index_dir` — STAR 2.7.7a index; leave it unset/unbuilt and the
     workflow builds it from `genome_fa` + `gene_gtf` (see the `[[references]]`
     block; switch `--genomeSAindexNbases` to 14 for hg38)
@@ -62,14 +69,15 @@ cd oxo-flow-erv
   runtime for the pinned `envs/*.yaml`
 
 A tiny synthetic kit ships in `test/fixtures` (20 kb genome, 3 genes, 10 ERV
-fragments, 4 proviruses, 2 samples) so a fresh clone validates and dry-runs
-without downloading anything.
+fragments, 4 proviruses, 2 samples in 2 sample groups) so a fresh clone
+validates and dry-runs without downloading anything.
 
 ## Usage
 
 ```bash
 # 1. put reads at <reads_dir>/<sample>_1.fastq.gz (and _2 for paired-end)
-#    and list samples in [[sample_groups]] of main.oxoflow
+#    and list samples in [[sample_groups]] of main.oxoflow; one block per
+#    cohort, its `name` becomes the {group} directory level
 # 2. point the [config] keys at real references
 # 3. preview
 oxo-flow dry-run main.oxoflow
@@ -82,17 +90,18 @@ oxo-flow run main.oxoflow -j 16 layout=se
 Primary outputs:
 
 ```text
-{out_dir}/bam/{sample}/{sample}.sorted.bam(.bai)
-{out_dir}/gene_counts/{sample}/{sample}_featureCounts.txt
-{out_dir}/ervmap/{sample}/{sample}ERVresults.txt          raw, 3,220 rows
-{out_dir}/ervmap/{sample}/{sample}.locus.tsv              normalized
-{out_dir}/telescope/{sample}/{sample}.report.tsv
-{out_dir}/tetranscripts/{sample}/{sample}.cntTable
-{out_dir}/squire/{sample}/{sample}_TEcounts.txt
-{out_dir}/squire/{sample}/{sample}_subFcounts.txt
-{out_dir}/aggregate/erv_expression_long.tsv.gz
-{out_dir}/aggregate/qc_per_sample.tsv
-{out_dir}/aggregate/erv_subfamily_evidence.tsv.gz
+{out_dir}/bam/{group}/{sample}/{sample}.sorted.bam(.bai)
+{out_dir}/gene_counts/{group}/{sample}/{sample}_featureCounts.txt
+{out_dir}/ervmap/{group}/{sample}/{sample}ERVresults.txt   raw, 3,220 rows
+{out_dir}/ervmap/{group}/{sample}/{sample}.locus.tsv       normalized
+{out_dir}/telescope/{group}/{sample}/{sample}.report.tsv
+{out_dir}/tetranscripts/{group}/{sample}/{sample}.cntTable
+{out_dir}/squire/{group}/{sample}/{sample}_TEcounts.txt
+{out_dir}/squire/{group}/{sample}/{sample}_subFcounts.txt
+{out_dir}/aggregate/per_sample/{group}/{sample}.long.tsv.gz
+{out_dir}/aggregate/erv_expression_long.tsv.gz             tool,group,sample,...
+{out_dir}/aggregate/qc_per_sample.tsv                      tool,group,sample,...
+{out_dir}/aggregate/erv_subfamily_evidence.tsv.gz          group,subfamily,...
 ```
 
 ## Fidelity
@@ -106,44 +115,55 @@ Primary outputs:
 | `build_locus_gtf` | `annotation::build_locus_gtf` | python 3.10 | family filter instead of the 550-name dictionary (see Deviations) |
 | `build_full_locus_map` | `annotation::build_full_locus_map` | python 3.10 | identical |
 | `squire_clean_folder` | `annotation::squire_clean_folder` | python 3.10 | identical |
-| — (new) | `annotation::ervmap_bed_sorted` | bedtools 2.31.1 | official BED, `chr` prefix + contig-order sort for `-sorted` |
+| — (new) | `annotation::ervmap_bed_sorted` | bedtools 2.31.1 | contig-name guard + contig-order sort of the chr-prefixed BED |
 | `ervmap_provirus_map` | `annotation::ervmap_annotate` | python 3.10 | max-overlap assignment instead of the int_model catalog |
-| — **(was import)** | `ervmap::ervmap_star_pe` / `ervmap_star_se` | STAR 2.7.7a | official ERVmap alignment parameters |
-| — **(was import)** | `ervmap::ervmap_count` | bedtools 2.31.1 | `coverageBed -counts -sorted` |
+| — **(was import)** | `ervmap::ervmap_star_pe` / `ervmap_star_se` | STAR 2.7.7a | the STAR call from this project's ERVmap rerun scripts |
+| — **(was import)** | `ervmap::ervmap_count` | bedtools 2.31.1 | `coverageBed -counts -sorted`, row count checked against the BED |
 | `ervmap_import` | `ervmap::ervmap_normalize` | python 3.10 | provirus-level table, subfamily attached |
 | `telescope_assign` | `telescope::telescope_assign` | telescope 1.0.3 + samtools 1.18 | identical |
 | `tetranscripts_locus` | `tetranscripts::tetranscripts_count` | TEtranscripts 2.2.3 | identical |
 | `squire_count` | `squire::squire_count` | SQuIRE 0.9.9.92 | identical; conda env instead of the container |
-| `aggregate_expression` | `aggregate::aggregate_sample` + `merge_aggregate` | python 3.10 | split per sample + cohort merge; `cohort` column dropped |
+| `aggregate_expression` | `aggregate::aggregate_sample` + `merge_aggregate` | python 3.10 | split per sample + group merge; the source `cohort` column is kept as `group` |
 
-### ERVmap is quantified here, not imported
+### How ERVmap is run (and which pitfalls are handled)
 
-The Snakemake source deliberately imported ERVmap results, arguing that the
-3,220-provirus set *is* the method. That reasoning does not hold once the
-reference is reproducible: the official wrapper is a two-step program whose
-parameters are the actual method. This port runs those steps —
-STAR with `--outFilterMultimapNmax 1 --outFilterMismatchNmax 999
---outFilterMismatchNoverLmax 0.02 --alignIntronMin 20 --alignIntronMax 1000000
---alignMatesGapMax 1000000`, then
-`bedtools coverage -nonamecheck -a ERVmap.bed -b <bam> -counts -sorted` —
-against the same 3,220-provirus BED, so the output is the same 3,220-row
-`<sample>ERVresults.txt` the old imports carried.
+The Snakemake source imported ERVmap results, on the argument that the
+3,220-provirus set *is* the method. This port computes them instead, with the
+command chain this project actually uses for ERVmap reruns
+(`ERV-data/pipeline/scripts/<cohort>/ERVmap.sh`, which drives the official
+`ERVmapping.sh` inside `ervmap.1.2.1` with `-m ALL`) plus the reference fixes
+registered after the original runs:
 
-Two failure modes are handled explicitly because they are silent:
+1. `STAR --outSAMtype BAM SortedByCoordinate --outFilterMultimapNmax 1
+   --outFilterMismatchNmax 999 --outFilterMismatchNoverLmax 0.02
+   --alignIntronMin 20 --alignIntronMax 1000000 --alignMatesGapMax 1000000`
+2. `samtools index`
+3. `bedtools coverage -nonamecheck -a ERVmap.bed -b <bam> -counts -sorted`
 
-- **Contig order.** The official BED is in lexicographic chromosome order
-  (`chr1, chr10, …, chr2`). `-sorted` compares that with the BAM header order
-  and aborts mid-file, truncating the result; the BED is therefore re-sorted by
-  the FASTA index before counting.
-- **Chromosome names.** `-nonamecheck` turns a name mismatch into 3,220 zero
-  rows and an exit code of 0. `qc_per_sample.tsv` flags that as `ZERO_COUNTS`.
+Output is the same 3,220-row `<sample>ERVresults.txt` the old imports carried.
+Each pitfall below produced a *successful-looking but wrong* result before, so
+each one has a guard rather than a comment:
+
+| Pitfall | What happened | Guard in this workflow |
+|---|---|---|
+| Chromosome names: the official BED has no `chr`, a UCSC index does | `-nonamecheck` writes 3,220 zero rows with exit code 0 — six cohorts / 1,787 samples were "finished" and useless | the workflow takes the chr-prefixed BED (verified equal to the official file plus the prefix) **and** `check_bed_contigs.py` fails before counting when BED contigs are missing from the FASTA index |
+| Contig order: BED is lexicographic (`chr1, chr10, …, chr2`), the BAM is not | `-sorted` aborts mid-file and the result is silently truncated | BED re-sorted with `bedtools sort -faidx`; the raw row count must equal the BED row count |
+| Reads are aligned to the **genome**, not to a provirus multi-fasta | easy to "fix" by building a 3,220-sequence index, which is a different method | documented; `--genomeDir` points at the workflow's genome index |
+
+Runtime deviations only: conda instead of Apptainer, threads as a rule resource
+(the project pinned 9), and `--limitBAMsortRAM` passed only when
+`ervmap_limit_bam_sort_ram > 0` (the project pinned `151290751290` bytes on its
+own host — set that value to reproduce the exact invocation).
 
 ### Deviations from the source pipeline
 
-- **Cohorts → samples.** `config/samples.tsv` (cohort + sample + fq1/fq2/bam)
-  becomes `[[sample_groups]]` plus the `reads_dir` layout, so every output is
-  per sample and the `cohort` column is gone. Run one cohort per `out_dir` (or
-  per config profile) when cohorts must stay separate.
+- **Cohorts are kept, as `{group}`.** `config/samples.tsv` (cohort + sample +
+  fq1/fq2/bam) becomes `[[sample_groups]]`, one block per cohort, plus the
+  `reads_dir` layout. The group name is a real path level
+  (`{tool}/{group}/{sample}`, the source's `{tool}/{cohort}/{sample}`), and the
+  aggregation tables carry a `group` column. Sample names may repeat across
+  groups. One capability is not reproduced: the source could point a sample at
+  an existing BAM instead of FASTQ; here every sample is aligned from FASTQ.
 - **ERV definition by family.** The source filtered RepeatMasker rows through a
   550-subfamily dictionary. Here the filter is `repFamily ∈ {ERV1, ERVK, ERVL,
   ERVL-MaLR}`; those four families are exactly the dictionary's contents

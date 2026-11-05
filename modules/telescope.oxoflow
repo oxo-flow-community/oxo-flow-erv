@@ -21,25 +21,25 @@ author = "oxo-flow-community"
 name = "telescope_assign"
 description = "Collate the BAM and run telescope assign"
 input = [
-    "{config.out_dir}/bam/{sample}/{sample}.sorted.bam",
+    "{config.out_dir}/bam/{group}/{sample}/{sample}.sorted.bam",
     "{config.out_dir}/annotation/te_locus.gtf",
 ]
-output = ["{config.out_dir}/telescope/{sample}/{sample}.report.tsv"]
-log = "{config.out_dir}/logs/telescope/{sample}.log"
+output = ["{config.out_dir}/telescope/{group}/{sample}/{sample}.report.tsv"]
+log = "{config.out_dir}/logs/telescope/{group}/{sample}.log"
 shell = """
 set -eo pipefail
-mkdir -p {config.out_dir}/telescope/{sample} {config.out_dir}/_tmp "$(dirname {log})"
-TMP={config.out_dir}/_tmp/{sample}.telescope
+mkdir -p {config.out_dir}/telescope/{group}/{sample} {config.out_dir}/_tmp "$(dirname {log})"
+TMP={config.out_dir}/_tmp/{group}.{sample}.telescope
 rm -rf "$TMP" && mkdir -p "$TMP"
 export TMPDIR="$TMP"
 samtools collate -@ {threads} -n 8 -l 6 -o "$TMP/collated.bam" {input[0]} >> {log} 2>&1
-telescope assign --outdir {config.out_dir}/telescope/{sample} \
+telescope assign --outdir {config.out_dir}/telescope/{group}/{sample} \
     --exp_tag {sample} \
     --ncpu {config.telescope_ncpu} \
     --max_iter {config.telescope_max_iter} \
     --theta_prior {config.telescope_theta_prior} \
     "$TMP/collated.bam" {input[1]} >> {log} 2>&1
-mv -f {config.out_dir}/telescope/{sample}/{sample}-telescope_report.tsv {output[0]}
+mv -f {config.out_dir}/telescope/{group}/{sample}/{sample}-telescope_report.tsv {output[0]}
 rm -rf "$TMP"
 """
 

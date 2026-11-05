@@ -15,7 +15,13 @@
 #
 # Ported from SunPast/ERV-pipeline (Snakemake, MIT).  The Snakemake version
 # imported ERVmap results instead of computing them; here ERVmap is a real rule
-# that runs the official wrapper's commands (see modules/ervmap.oxoflow).
+# that runs the same command chain this project uses for ERVmap reruns, with the
+# BED pitfalls fixed (see modules/ervmap.oxoflow).
+#
+# Cohort == [[sample_groups]] name, exposed to the rules as {group}: every
+# per-sample output keeps the source layout {tool}/{group}/{sample}/..., so a
+# cohort is a first-class directory level, not a naming convention.  Sample
+# names may repeat across groups.
 #
 # Reference data: test/fixtures/reference is a tiny synthetic kit (20 kb genome,
 # 3 genes, 10 ERV fragments, 4 proviruses) so a fresh clone can be validated
@@ -63,12 +69,16 @@ star_out_filter_mismatch_nmax = 15
 # pipeline pinned ~36 GB; set a byte count to reproduce that exactly.
 star_limit_bam_sort_ram = 0
 
-# --- ERVmap STAR (official parameters; change only if you know why) ---
+# --- ERVmap STAR (parameters of the project's ERVmap rerun) ---
 ervmap_multimap_nmax = 1
 ervmap_mismatch_nover_lmax = 0.02
 ervmap_align_intron_min = 20
 ervmap_align_intron_max = 1000000
 ervmap_align_mates_gap_max = 1000000
+# 0 = do not pass --limitBAMsortRAM (STAR sizes it from available memory).
+# The project scripts pinned 151290751290 bytes on their host; set that value
+# to reproduce their exact invocation.
+ervmap_limit_bam_sort_ram = 0
 
 # --- Telescope ---
 telescope_max_iter = 200
@@ -102,9 +112,16 @@ memory = "16G"
 [references.environment]
 conda = "envs/star.yaml"
 
+# The group name becomes the cohort directory level ({group}).  Two groups with
+# one sample each ship with the fixtures so the cohort dimension is exercised by
+# the default dry-run and by test/run.sh.
 [[sample_groups]]
-name = "cohort"
-samples = ["sample_01", "sample_02"]
+name = "cohort_a"
+samples = ["sample_01"]
+
+[[sample_groups]]
+name = "cohort_b"
+samples = ["sample_02"]
 
 [[include]]
 path = "modules/alignment.oxoflow"

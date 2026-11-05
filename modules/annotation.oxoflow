@@ -125,7 +125,10 @@ mkdir -p "$(dirname {output[0]})" "$(dirname {log})"
 # chr2). `bedtools coverage -sorted` compares that order with the BAM header
 # order and aborts mid-file when they differ, which silently truncates the
 # result. Sorting by the FASTA index makes the two agree.
-bedtools sort -faidx {input[1]} -i {input[0]} > {output[0]} 2> {log}
+# The contig-name check runs first: `-nonamecheck` would otherwise turn a
+# name mismatch into an all-zero result with exit code 0.
+python3 scripts/check_bed_contigs.py {input[0]} {input[1]} 2>> {log}
+bedtools sort -faidx {input[1]} -i {input[0]} > {output[0]} 2>> {log}
 """
 
 [rules.resources]

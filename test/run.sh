@@ -35,6 +35,18 @@ OUT=$("$OXO" debug main.oxoflow 2>&1)
 echo "$OUT" | grep -q '{sample}' && { echo "unexpanded {sample} in debug output"; exit 1; } || true
 echo "$OUT" | grep -q '{config\.' && { echo "unexpanded {config.*} in debug output"; exit 1; } || true
 
+echo "==> the sample group is materialised as a directory level"
+OUT=$("$OXO" debug main.oxoflow 2>&1)
+echo "$OUT" | grep -q "results/fastp/cohort_a/sample_01/"
+echo "$OUT" | grep -q "results/fastp/cohort_b/sample_02/"
+
+echo "==> ERVmap BED contig guard"
+printf 'chr1\t12000\nchr2\t8000\n' > /tmp/erv-fai-$$.fai
+python3 scripts/check_bed_contigs.py test/fixtures/reference/ERVmap.bed /tmp/erv-fai-$$.fai 2>/dev/null
+sed 's/^chr//' test/fixtures/reference/ERVmap.bed > /tmp/erv-noprefix-$$.bed
+! python3 scripts/check_bed_contigs.py /tmp/erv-noprefix-$$.bed /tmp/erv-fai-$$.fai 2>/dev/null
+rm -f /tmp/erv-fai-$$.fai /tmp/erv-noprefix-$$.bed
+
 echo "==> fixture scripts run"
 python3 scripts/build_locus_from_rmsk.py test/fixtures/reference/rmsk.txt \
     "ERV1,ERVK,ERVL,ERVL-MaLR" /tmp/erv-locus-$$.gtf /tmp/erv-map-$$.tsv \

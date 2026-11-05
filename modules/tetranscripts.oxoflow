@@ -20,17 +20,17 @@ author = "oxo-flow-community"
 name = "tetranscripts_count"
 description = "Run TEcount on the coordinate-sorted BAM"
 input = [
-    "{config.out_dir}/bam/{sample}/{sample}.sorted.bam",
+    "{config.out_dir}/bam/{group}/{sample}/{sample}.sorted.bam",
     "{config.gene_gtf}",
     "{config.out_dir}/annotation/te_locus.exon.gtf",
 ]
-output = ["{config.out_dir}/tetranscripts/{sample}/{sample}.cntTable"]
-log = "{config.out_dir}/logs/tetranscripts/{sample}.log"
+output = ["{config.out_dir}/tetranscripts/{group}/{sample}/{sample}.cntTable"]
+log = "{config.out_dir}/logs/tetranscripts/{group}/{sample}.log"
 shell = """
 set -eo pipefail
 OUT=$(readlink -f {config.out_dir})
 LOG=$(readlink -f {log})
-mkdir -p "$OUT/tetranscripts/{sample}" "$OUT/_tmp" "$(dirname "$LOG")"
+mkdir -p "$OUT/tetranscripts/{group}/{sample}" "$OUT/_tmp" "$(dirname "$LOG")"
 TMP=$OUT/_tmp/{sample}.tecount
 rm -rf "$TMP" && mkdir -p "$TMP"
 BAM=$(readlink -f {input[0]})
@@ -42,7 +42,7 @@ TEcount --sortByPos --format BAM --mode multi \
     -b "$BAM" \
     --GTF "$GTF" --TE "$TE" \
     --project {sample} \
-    --outdir "$OUT/tetranscripts/{sample}" >> "$LOG" 2>&1
+    --outdir "$OUT/tetranscripts/{group}/{sample}" >> "$LOG" 2>&1
 cd /
 rm -rf "$TMP"
 """

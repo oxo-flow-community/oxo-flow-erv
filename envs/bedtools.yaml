@@ -6,3 +6,5 @@ dependencies:
   # ERVmap "Finding ERVs" step: bedtools coverage -sorted
   - bedtools=2.31.1
   - samtools=1.15
+  # contig-name guard on the ERVmap BED
+  - python=3.10

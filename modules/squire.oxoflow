@@ -24,27 +24,27 @@ author = "oxo-flow-community"
 name = "squire_count"
 description = "Run squire Count on the coordinate-sorted BAM"
 input = [
-    "{config.out_dir}/bam/{sample}/{sample}.sorted.bam",
+    "{config.out_dir}/bam/{group}/{sample}/{sample}.sorted.bam",
     "{config.out_dir}/annotation/squire_clean/hg38_all.bed",
     "{config.out_dir}/annotation/squire_clean/hg38_all_copies.txt",
 ]
 output = [
-    "{config.out_dir}/squire/{sample}/{sample}_TEcounts.txt",
-    "{config.out_dir}/squire/{sample}/{sample}_subFcounts.txt",
+    "{config.out_dir}/squire/{group}/{sample}/{sample}_TEcounts.txt",
+    "{config.out_dir}/squire/{group}/{sample}/{sample}_subFcounts.txt",
 ]
-log = "{config.out_dir}/logs/squire/{sample}.log"
+log = "{config.out_dir}/logs/squire/{group}/{sample}.log"
 shell = """
 set -eo pipefail
-mkdir -p {config.out_dir}/squire/{sample} {config.out_dir}/_tmp "$(dirname {log})" {config.out_dir}/reference
-mkdir -p {config.out_dir}/squire/{sample}/map
-ln -sfn "$(readlink -f {input[0]})" {config.out_dir}/squire/{sample}/map/{sample}.bam
-TMP={config.out_dir}/_tmp/{sample}.squire
+mkdir -p {config.out_dir}/squire/{group}/{sample} {config.out_dir}/_tmp "$(dirname {log})" {config.out_dir}/reference
+mkdir -p {config.out_dir}/squire/{group}/{sample}/map
+ln -sfn "$(readlink -f {input[0]})" {config.out_dir}/squire/{group}/{sample}/map/{sample}.bam
+TMP={config.out_dir}/_tmp/{group}.{sample}.squire
 rm -rf "$TMP" && mkdir -p "$TMP"
 export TMPDIR="$TMP"
 squire Count \
-    --map_folder {config.out_dir}/squire/{sample}/map \
+    --map_folder {config.out_dir}/squire/{group}/{sample}/map \
     --clean_folder {config.out_dir}/annotation/squire_clean \
-    --count_folder {config.out_dir}/squire/{sample} \
+    --count_folder {config.out_dir}/squire/{group}/{sample} \
     --tempfolder "$TMP" \
     --fetch_folder {config.out_dir}/reference \
     --build {config.squire_build} \

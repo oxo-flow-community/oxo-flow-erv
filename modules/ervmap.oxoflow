@@ -1,7 +1,9 @@
 # ERVmap — provirus-level quantification, run here instead of imported.
 #
-# The method is the official ERVmap wrapper (ervmap.1.2.1 image, script
-# /scripts/ERVmapping.sh, mode ALL) executed with its own parameters:
+# What runs is the command chain this project actually uses for ERVmap reruns
+# (ERV-data/pipeline/scripts/<cohort>/ERVmap.sh, which drives the official
+# /scripts/ERVmapping.sh inside ervmap.1.2.1 with mode ALL), i.e. the wrapper's
+# STAR parameters plus our registered fixes to the reference BED:
 #
 #   STAR --outSAMtype BAM SortedByCoordinate
 #        --outFilterMultimapNmax 1            # unique alignments only
@@ -9,25 +11,31 @@
 #        --outFilterMismatchNoverLmax 0.02    # <= 2% mismatch rate
 #        --alignIntronMin 20 --alignIntronMax 1000000 --alignMatesGapMax 1000000
 #   samtools index
-#   coverageBed -nonamecheck -a ERVmap.bed -b <bam> -counts -sorted
+#   bedtools coverage -nonamecheck -a ERVmap.bed -b <bam> -counts -sorted
 #
-# Two things are easy to get wrong and are handled explicitly here:
+# Four pitfalls are handled explicitly, because three of them fail silently:
 #
+#   * chromosome names.  The official BED has no "chr" prefix while a UCSC STAR
+#     index does; `-nonamecheck` then reports 3,220 zero rows and exit code 0.
+#     The BED used here is the chr-prefixed one this project verified to be
+#     identical to the official file (union of the healthy per-sample provirus
+#     sets == official BED + prefix, zero diff), and check_bed_contigs.py
+#     refuses to count when the names still disagree.
+#   * contig order.  The official BED is lexicographic (chr1, chr10, ..., chr2);
+#     `-sorted` compares that with the BAM header order and aborts mid-file,
+#     truncating the result.  The BED is re-sorted by the FASTA index first and
+#     the raw output row count is checked against the BED afterwards.
 #   * the reads are aligned to the GENOME, not to a provirus multi-fasta, and
-#     the 3,220 provirus intervals are only used for counting.  The image ships
-#     hg38 as /genome; this rule points --genomeDir at the workflow's index.
-#   * the BED must be sorted in the BAM's contig order (modules/annotation).
-#     `-nonamecheck` disables the chromosome-name check, so a name or order
-#     mismatch does not fail — it writes 3,220 zero rows and looks like a
-#     successful run.  The QC table flags that case as ZERO_COUNTS.
+#     the 3,220 intervals are only used for counting.
+#
+# Deviations from the project script are limited to the runtime: conda instead
+# of the Apptainer image, threads as a rule resource (the project pinned 9), and
+# --limitBAMsortRAM left to STAR when ervmap_limit_bam_sort_ram = 0 (the project
+# pinned 151290751290 bytes on its own host; set that value to reproduce it).
 #
 # Single-end: the official wrapper requires --read1 and --read2.  The
 # single-end variant is the same STAR command with one input file; this is a
-# documented deviation (layout = "se").
-#
-# The BED used here has a "chr" prefix; the untouched official file does not.
-# Adding the prefix is the only change (verified in the source project: the
-# union of the healthy per-sample provirus sets is exactly the official BED).
+# documented addition (layout = "se").
 
 [workflow]
 name = "erv-ervmap"
@@ -45,12 +53,15 @@ input = [
     "{config.star_index_dir}/genomeParameters.txt",
 ]
 output = [
-    "{config.out_dir}/ervmap/{sample}/{sample}.Aligned.sortedByCoord.out.bam",
-    "{config.out_dir}/ervmap/{sample}/{sample}.Aligned.sortedByCoord.out.bam.bai",
+    "{config.out_dir}/ervmap/{group}/{sample}/{sample}.Aligned.sortedByCoord.out.bam",
+    "{config.out_dir}/ervmap/{group}/{sample}/{sample}.Aligned.sortedByCoord.out.bam.bai",
 ]
-log = "{config.out_dir}/logs/ervmap/{sample}.align.log"
+log = "{config.out_dir}/logs/ervmap/{group}/{sample}.align.log"
 shell = """
-mkdir -p {config.out_dir}/ervmap/{sample} "$(dirname {log})"
+mkdir -p {config.out_dir}/ervmap/{group}/{sample} "$(dirname {log})"
+RAM={config.ervmap_limit_bam_sort_ram}
+RAM_ARG=""
+[ "$RAM" -gt 0 ] && RAM_ARG="--limitBAMsortRAM $RAM"
 STAR --genomeDir {config.star_index_dir} --runThreadN {threads} \
     --outSAMtype BAM SortedByCoordinate \
     --outFilterMultimapNmax {config.ervmap_multimap_nmax} \
@@ -61,7 +72,8 @@ STAR --genomeDir {config.star_index_dir} --runThreadN {threads} \
     --alignMatesGapMax {config.ervmap_align_mates_gap_max} \
     --readFilesIn {input[0]} {input[1]} \
     --readFilesCommand zcat \
-    --outFileNamePrefix {config.out_dir}/ervmap/{sample}/{sample}. \
+    $RAM_ARG \
+    --outFileNamePrefix {config.out_dir}/ervmap/{group}/{sample}/{sample}. \
     > {log} 2>&1
 samtools index -@ {threads} {output[0]} {output[1]} >> {log} 2>&1
 """
@@ -82,12 +94,15 @@ input = [
     "{config.star_index_dir}/genomeParameters.txt",
 ]
 output = [
-    "{config.out_dir}/ervmap/{sample}/{sample}.Aligned.sortedByCoord.out.bam",
-    "{config.out_dir}/ervmap/{sample}/{sample}.Aligned.sortedByCoord.out.bam.bai",
+    "{config.out_dir}/ervmap/{group}/{sample}/{sample}.Aligned.sortedByCoord.out.bam",
+    "{config.out_dir}/ervmap/{group}/{sample}/{sample}.Aligned.sortedByCoord.out.bam.bai",
 ]
-log = "{config.out_dir}/logs/ervmap/{sample}.align.log"
+log = "{config.out_dir}/logs/ervmap/{group}/{sample}.align.log"
 shell = """
-mkdir -p {config.out_dir}/ervmap/{sample} "$(dirname {log})"
+mkdir -p {config.out_dir}/ervmap/{group}/{sample} "$(dirname {log})"
+RAM={config.ervmap_limit_bam_sort_ram}
+RAM_ARG=""
+[ "$RAM" -gt 0 ] && RAM_ARG="--limitBAMsortRAM $RAM"
 STAR --genomeDir {config.star_index_dir} --runThreadN {threads} \
     --outSAMtype BAM SortedByCoordinate \
     --outFilterMultimapNmax {config.ervmap_multimap_nmax} \
@@ -98,7 +113,8 @@ STAR --genomeDir {config.star_index_dir} --runThreadN {threads} \
     --alignMatesGapMax {config.ervmap_align_mates_gap_max} \
     --readFilesIn {input[0]} \
     --readFilesCommand zcat \
-    --outFileNamePrefix {config.out_dir}/ervmap/{sample}/{sample}. \
+    $RAM_ARG \
+    --outFileNamePrefix {config.out_dir}/ervmap/{group}/{sample}/{sample}. \
     > {log} 2>&1
 samtools index -@ {threads} {output[0]} {output[1]} >> {log} 2>&1
 """
@@ -114,16 +130,19 @@ conda = "envs/star.yaml"
 name = "ervmap_count"
 description = "Count reads per provirus with bedtools coverage (ERVmap 'Finding ERVs' step)"
 input = [
-    "{config.out_dir}/ervmap/{sample}/{sample}.Aligned.sortedByCoord.out.bam",
+    "{config.out_dir}/ervmap/{group}/{sample}/{sample}.Aligned.sortedByCoord.out.bam",
     "{config.out_dir}/reference/ERVmap.sorted.bed",
 ]
-output = ["{config.out_dir}/ervmap/{sample}/{sample}ERVresults.txt"]
-log = "{config.out_dir}/logs/ervmap/{sample}.count.log"
+output = ["{config.out_dir}/ervmap/{group}/{sample}/{sample}ERVresults.txt"]
+log = "{config.out_dir}/logs/ervmap/{group}/{sample}.count.log"
 shell = """
 mkdir -p "$(dirname {output[0]})" "$(dirname {log})"
 bedtools coverage -nonamecheck -a {input[1]} -b {input[0]} -counts -sorted \
     > {output[0]} 2> {log}
 test -s {output[0]} || { echo "empty ERVmap output" >&2; exit 1; }
+# one row per provirus; fewer rows means -sorted aborted mid-file
+test "$(wc -l < {output[0]})" -eq "$(wc -l < {input[1]})" || {
+    echo "ERVmap row count != BED row count (truncated -sorted run?)" >&2; exit 1; }
 """
 
 [rules.resources]
@@ -137,11 +156,11 @@ conda = "envs/bedtools.yaml"
 name = "ervmap_normalize"
 description = "Put raw ERVmap output on the common locus table"
 input = [
-    "{config.out_dir}/ervmap/{sample}/{sample}ERVresults.txt",
+    "{config.out_dir}/ervmap/{group}/{sample}/{sample}ERVresults.txt",
     "{config.out_dir}/annotation/ervmap_annotation.tsv",
 ]
-output = ["{config.out_dir}/ervmap/{sample}/{sample}.locus.tsv"]
-log = "{config.out_dir}/logs/ervmap/{sample}.normalize.log"
+output = ["{config.out_dir}/ervmap/{group}/{sample}/{sample}.locus.tsv"]
+log = "{config.out_dir}/logs/ervmap/{group}/{sample}.normalize.log"
 shell = """
 mkdir -p "$(dirname {output[0]})" "$(dirname {log})"
 python3 scripts/normalize_ervmap.py {input[0]} {input[1]} {output[0]} 2> {log}

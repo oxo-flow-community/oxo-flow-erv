@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Put one sample's four tool outputs on one long table.
 
-Usage: aggregate_expression.py OUTDIR SAMPLE LOCUS_MAP ERVMAP_ANNOTATION
+Usage: aggregate_expression.py OUTDIR GROUP SAMPLE LOCUS_MAP ERVMAP_ANNOTATION
 
-Output: {OUTDIR}/aggregate/per_sample/{sample}.long.tsv.gz
-  tool  sample  level(locus|subfamily)  feature  region_type  count  milli_div
+Output: {OUTDIR}/aggregate/per_sample/{GROUP}/{SAMPLE}.long.tsv.gz
+  tool  group  sample  level(locus|subfamily)  feature  region_type  count  milli_div
 
 milli_div (RepeatMasker divergence, per mille) is a property of the locus, not
 of the tool, so it is filled at locus level only.  It is left empty at
@@ -29,7 +29,7 @@ import gzip
 import os
 import sys
 
-outdir, sample, locus_map, ervmap_annot = sys.argv[1:5]
+outdir, group, sample, locus_map, ervmap_annot = sys.argv[1:6]
 
 locus2sf = {}
 locus_md = {}
@@ -49,7 +49,7 @@ subsum = collections.defaultdict(float)
 
 
 def add(tool, level, feature, reg, count, md=""):
-    rows.append((tool, sample, level, feature, reg, count, md))
+    rows.append((tool, group, sample, level, feature, reg, count, md))
 
 
 def squire_locus_id(te_id):
@@ -61,7 +61,7 @@ def squire_locus_id(te_id):
 
 
 # ---- Telescope (locus) ----
-rep = f"{outdir}/telescope/{sample}/{sample}.report.tsv"
+rep = f"{outdir}/telescope/{group}/{sample}/{sample}.report.tsv"
 if os.path.exists(rep):
     for line in open(rep):
         if line.startswith("#") or line.startswith("transcript\t"):
@@ -77,7 +77,7 @@ if os.path.exists(rep):
         subsum[("telescope", sf, reg)] += cnt
 
 # ---- TEtranscripts / TEcount (locus) ----
-cnt_tbl = f"{outdir}/tetranscripts/{sample}/{sample}.cntTable"
+cnt_tbl = f"{outdir}/tetranscripts/{group}/{sample}/{sample}.cntTable"
 if os.path.exists(cnt_tbl):
     with open(cnt_tbl) as fh:
         next(fh, None)
@@ -96,7 +96,7 @@ if os.path.exists(cnt_tbl):
             subsum[("tetranscripts", sf, reg)] += cnt
 
 # ---- SQuIRE (locus) ----
-sq_te = f"{outdir}/squire/{sample}/{sample}_TEcounts.txt"
+sq_te = f"{outdir}/squire/{group}/{sample}/{sample}_TEcounts.txt"
 if os.path.exists(sq_te):
     with open(sq_te) as fh:
         next(fh, None)
@@ -111,7 +111,7 @@ if os.path.exists(sq_te):
             add("squire", "locus", lid, reg, float(f[15]), locus_md.get(lid, ""))
 
 # ---- SQuIRE (subfamily, from its own subFcounts file) ----
-sq_sf = f"{outdir}/squire/{sample}/{sample}_subFcounts.txt"
+sq_sf = f"{outdir}/squire/{group}/{sample}/{sample}_subFcounts.txt"
 if os.path.exists(sq_sf):
     with open(sq_sf) as fh:
         next(fh, None)
@@ -126,7 +126,7 @@ if os.path.exists(sq_sf):
             add("squire", "subfamily", sf, reg, float(f[6]))
 
 # ---- ERVmap (locus; subfamily from the provirus annotation) ----
-ev = f"{outdir}/ervmap/{sample}/{sample}.locus.tsv"
+ev = f"{outdir}/ervmap/{group}/{sample}/{sample}.locus.tsv"
 if os.path.exists(ev):
     for r in csv.DictReader(open(ev), delimiter="\t"):
         cnt = float(r["count"])
@@ -139,11 +139,12 @@ if os.path.exists(ev):
 for (tool, sf, reg), v in subsum.items():
     add(tool, "subfamily", sf, reg, v)
 
-per_dir = f"{outdir}/aggregate/per_sample"
+per_dir = f"{outdir}/aggregate/per_sample/{group}"
 os.makedirs(per_dir, exist_ok=True)
 with gzip.open(f"{per_dir}/{sample}.long.tsv.gz", "wt") as fo:
-    fo.write("tool\tsample\tlevel\tfeature\tregion_type\tcount\tmilli_div\n")
+    fo.write("tool\tgroup\tsample\tlevel\tfeature\tregion_type\tcount\tmilli_div\n")
     for row in rows:
         fo.write("\t".join(map(str, row)) + "\n")
 
-print(f"{sample}: rows={len(rows)} tools={len({r[0] for r in rows})}", file=sys.stderr)
+print(f"{group}/{sample}: rows={len(rows)} tools={len({r[0] for r in rows})}",
+      file=sys.stderr)
