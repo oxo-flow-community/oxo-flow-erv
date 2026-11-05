@@ -34,6 +34,7 @@ output = [
 ]
 log = "{config.out_dir}/logs/squire/{sample}.log"
 shell = """
+set -eo pipefail
 mkdir -p {config.out_dir}/squire/{sample} {config.out_dir}/_tmp "$(dirname {log})" {config.out_dir}/reference
 mkdir -p {config.out_dir}/squire/{sample}/map
 ln -sfn "$(readlink -f {input[0]})" {config.out_dir}/squire/{sample}/map/{sample}.bam

@@ -6,8 +6,9 @@
 # assigned in one pass and compete against each other, as the tool intends.
 #
 # TEcount writes its coordinate-sorted temporary BAM into the process working
-# directory, so the job runs inside a scratch directory instead of writing a
-# multi-GB file next to the results.
+# directory, so the job runs inside a scratch directory.  Every path handed to
+# TEcount is made absolute first — a relative --outdir would land inside the
+# scratch directory and be deleted with it.
 
 [workflow]
 name = "erv-tetranscripts"
@@ -26,16 +27,24 @@ input = [
 output = ["{config.out_dir}/tetranscripts/{sample}/{sample}.cntTable"]
 log = "{config.out_dir}/logs/tetranscripts/{sample}.log"
 shell = """
-mkdir -p {config.out_dir}/tetranscripts/{sample} {config.out_dir}/_tmp "$(dirname {log})"
-TMP={config.out_dir}/_tmp/{sample}.tecount
-rm -rf "$TMP" && mkdir -p "$TMP" && cd "$TMP"
+set -eo pipefail
+OUT=$(readlink -f {config.out_dir})
+LOG=$(readlink -f {log})
+mkdir -p "$OUT/tetranscripts/{sample}" "$OUT/_tmp" "$(dirname "$LOG")"
+TMP=$OUT/_tmp/{sample}.tecount
+rm -rf "$TMP" && mkdir -p "$TMP"
+BAM=$(readlink -f {input[0]})
+GTF=$(readlink -f {input[1]})
+TE=$(readlink -f {input[2]})
+cd "$TMP"
 export TMPDIR="$TMP"
 TEcount --sortByPos --format BAM --mode multi \
-    -b {input[0]} \
-    --GTF {input[1]} --TE {input[2]} \
+    -b "$BAM" \
+    --GTF "$GTF" --TE "$TE" \
     --project {sample} \
-    --outdir {config.out_dir}/tetranscripts/{sample} >> {log} 2>&1
-cd / && rm -rf "$TMP"
+    --outdir "$OUT/tetranscripts/{sample}" >> "$LOG" 2>&1
+cd /
+rm -rf "$TMP"
 """
 
 [rules.resources]

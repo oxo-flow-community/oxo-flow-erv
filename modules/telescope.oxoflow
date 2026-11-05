@@ -27,6 +27,7 @@ input = [
 output = ["{config.out_dir}/telescope/{sample}/{sample}.report.tsv"]
 log = "{config.out_dir}/logs/telescope/{sample}.log"
 shell = """
+set -eo pipefail
 mkdir -p {config.out_dir}/telescope/{sample} {config.out_dir}/_tmp "$(dirname {log})"
 TMP={config.out_dir}/_tmp/{sample}.telescope
 rm -rf "$TMP" && mkdir -p "$TMP"

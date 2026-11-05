@@ -111,6 +111,7 @@ STAR --runThreadN {threads} \
      --twopassMode Basic \
      --quantMode GeneCounts \
      $RAM_ARG > {log} 2>&1
+mv -f {config.out_dir}/star/{sample}/{sample}_Aligned.out.bam {output[0]}
 """
 
 [rules.resources]
@@ -153,6 +154,7 @@ STAR --runThreadN {threads} \
      --twopassMode Basic \
      --quantMode GeneCounts \
      $RAM_ARG > {log} 2>&1
+mv -f {config.out_dir}/star/{sample}/{sample}_Aligned.out.bam {output[0]}
 """
 
 [rules.resources]
@@ -172,6 +174,7 @@ output = [
 ]
 log = "{config.out_dir}/logs/samtools/{sample}.sort.log"
 shell = """
+set -eo pipefail
 mkdir -p "$(dirname {output[0]})" "$(dirname {log})" {config.out_dir}/_tmp
 # -m 512M: sort's default 768M per thread over-allocates on many-core boxes
 samtools sort -@ {threads} -m 512M -T {config.out_dir}/_tmp/{sample}.sort \

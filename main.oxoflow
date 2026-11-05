@@ -72,7 +72,9 @@ ervmap_align_mates_gap_max = 1000000
 
 # --- Telescope ---
 telescope_max_iter = 200
-telescope_theta_prior = 0.01
+# source value; telescope 1.0.3 takes an integer ("equivalent to adding n
+# non-unique reads")
+telescope_theta_prior = 200000
 telescope_ncpu = 1
 
 # --- SQuIRE ---
