@@ -211,12 +211,14 @@ consistent output:
 | ERVmap | 4/4 proviruses with non-zero counts, subfamily assigned (MER41-int/ERV1, HERVK-int/ERVK) |
 | Telescope | 10 features, 400 fragments, counts 59/51/44/14/… |
 | TEcount | 10 ERV loci + 3 genes, counts matching the GTF locus ids |
-| aggregation | long table (3 tools), QC table and subfamily evidence built on the real outputs |
+| aggregation | long table (3 tools), QC table and subfamily evidence, one set per group |
 
 The live run found four defects that dry-run could not: a STAR output name that
 did not match the declared output, `--theta_prior` needing an integer, TEcount's
 relative `--outdir` being deleted with the scratch directory, and tool failures
-masked by a trailing `rm -rf`. All four are fixed in the rules above.
+masked by a trailing `rm -rf`. All four are fixed in the rules above. The BED
+guards were exercised both ways: a chr-prefixed BED passes, the same BED with
+the prefix stripped is rejected before counting.
 
 **SQuIRE was not run live**: `squire=0.9.9.92` could not be installed in the
 verification environment (conda dependency conflict) and the container image is
