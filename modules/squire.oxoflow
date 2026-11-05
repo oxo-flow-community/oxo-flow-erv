@@ -1,0 +1,60 @@
+# SQuIRE — locus + subfamily counts from the same coordinate-sorted BAM.
+#
+# `squire Count` runs directly on the pipeline BAM; `squire Map` is not needed
+# (it costs ~32 GB per sample for the STAR index) and is therefore not part of
+# the DAG.  One Count run writes both levels:
+#   <sample>_TEcounts.txt    locus level (TE_ID = chr|start|end|Subfamily:Family:Class|milliDiv|strand)
+#   <sample>_subFcounts.txt  subfamily level
+#
+# Two things the source project learned the hard way:
+#   * the map folder must contain NO *.log file: SQuIRE's getlibsize() picks the
+#     first "*.log" and parses STAR log lines out of it, so a stray log makes
+#     Count die with "local variable 'unique_libsize' referenced before
+#     assignment".  The folder below contains exactly one symlink.
+#   * SQuIRE needs the FULL repeat annotation as its multi-mapper reference
+#     (clean_folder built from the unfiltered map), not the ERV subset.
+
+[workflow]
+name = "erv-squire"
+version = "1.0.0"
+description = "SQuIRE Count on a pre-built clean_folder (locus and subfamily level)."
+author = "oxo-flow-community"
+
+[[rules]]
+name = "squire_count"
+description = "Run squire Count on the coordinate-sorted BAM"
+input = [
+    "{config.out_dir}/bam/{sample}/{sample}.sorted.bam",
+    "{config.out_dir}/annotation/squire_clean/hg38_all.bed",
+    "{config.out_dir}/annotation/squire_clean/hg38_all_copies.txt",
+]
+output = [
+    "{config.out_dir}/squire/{sample}/{sample}_TEcounts.txt",
+    "{config.out_dir}/squire/{sample}/{sample}_subFcounts.txt",
+]
+log = "{config.out_dir}/logs/squire/{sample}.log"
+shell = """
+mkdir -p {config.out_dir}/squire/{sample} {config.out_dir}/_tmp "$(dirname {log})" {config.out_dir}/reference
+mkdir -p {config.out_dir}/squire/{sample}/map
+ln -sfn "$(readlink -f {input[0]})" {config.out_dir}/squire/{sample}/map/{sample}.bam
+TMP={config.out_dir}/_tmp/{sample}.squire
+rm -rf "$TMP" && mkdir -p "$TMP"
+export TMPDIR="$TMP"
+squire Count \
+    --map_folder {config.out_dir}/squire/{sample}/map \
+    --clean_folder {config.out_dir}/annotation/squire_clean \
+    --count_folder {config.out_dir}/squire/{sample} \
+    --tempfolder "$TMP" \
+    --fetch_folder {config.out_dir}/reference \
+    --build {config.squire_build} \
+    --read_length {config.squire_read_length} \
+    --pthreads {threads} --name {sample} >> {log} 2>&1
+rm -rf "$TMP"
+"""
+
+[rules.resources]
+threads = 2
+memory = "16G"
+
+[rules.environment]
+conda = "envs/squire.yaml"

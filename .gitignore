@@ -1,0 +1,4 @@
+.oxo-flow/
+results/
+test/fixtures/reference/STAR_index/
+test/fixtures/reference/*.fai

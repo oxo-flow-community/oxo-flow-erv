@@ -1,0 +1,9 @@
+name: erv-tetranscripts
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  # TEcount (same version as the source project's container, tetranscripts.2.2.3)
+  - tetranscripts=2.2.3
+  - samtools=1.15
+  - python=3.10

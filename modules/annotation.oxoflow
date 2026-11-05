@@ -1,0 +1,155 @@
+# Annotation layer.
+#
+# Single source of truth: the UCSC RepeatMasker table.  Four derived products:
+#
+#   1) te_locus.gtf / te_locus.exon.gtf / te_locus_map.tsv
+#      ERV fragments of the four ERV repFamilies (ERV1, ERVK, ERVL,
+#      ERVL-MaLR), one fragment = one locus, no merging.
+#   2) te_locus_map_full.tsv
+#      the same map without the family filter, used to build SQuIRE's
+#      clean_folder.  SQuIRE needs the FULL repeat set as its multi-mapper
+#      reference: with an ERV-only input the counts of high-copy subfamilies
+#      collapse, because the multi-mapper bookkeeping loses its anchor.
+#   3) hg38_all.bed / hg38_all_copies.txt
+#      SQuIRE's clean_folder, written directly (see make_squire_clean.py).
+#   4) ERVmap.sorted.bed / ervmap_annotation.tsv
+#      the official 3,220-provirus BED in the contig order of the BAM, plus the
+#      provirus -> RepeatMasker-fragment assignment used to put ERVmap counts on
+#      the common annotation.
+#
+# Why fragments are NOT merged:
+#   - merging rules are hand-made (distance threshold, model coverage) and
+#     cannot be reproduced;
+#   - fragments can always be aggregated upward, merged loci cannot be split
+#     back into fragments;
+#   - fragment coordinates are identical for Telescope and TEtranscripts, so
+#     tool differences can be attributed to the algorithm, not the annotation.
+
+[workflow]
+name = "erv-annotation"
+version = "1.0.0"
+description = "RepeatMasker table -> ERV locus GTF/map, SQuIRE clean_folder and the ERVmap provirus annotation."
+author = "oxo-flow-community"
+
+[[rules]]
+name = "genome_fai"
+description = "Index the genome FASTA (contig order for bedtools -sorted)"
+input = ["{config.genome_fa}"]
+output = ["{config.out_dir}/reference/genome.fa.fai"]
+log = "{config.out_dir}/logs/annotation/genome_fai.log"
+shell = """
+mkdir -p "$(dirname {output[0]})" "$(dirname {log})"
+samtools faidx -o {output[0]} {input[0]} > {log} 2>&1
+"""
+
+[rules.resources]
+threads = 1
+
+[rules.environment]
+conda = "envs/samtools.yaml"
+
+[[rules]]
+name = "build_locus_gtf"
+description = "Build the ERV locus GTF, exon GTF and map from the RepeatMasker table"
+input = ["{config.rmsk_table}"]
+output = [
+    "{config.out_dir}/annotation/te_locus.gtf",
+    "{config.out_dir}/annotation/te_locus.exon.gtf",
+    "{config.out_dir}/annotation/te_locus_map.tsv",
+]
+log = "{config.out_dir}/logs/annotation/build_locus_gtf.log"
+shell = """
+mkdir -p "$(dirname {output[0]})" "$(dirname {log})"
+python3 scripts/build_locus_from_rmsk.py {input[0]} "{config.erv_families}" \
+    {output[0]} {output[2]} {output[1]} "{config.chroms}" 2> {log}
+"""
+
+[rules.resources]
+threads = 1
+
+[rules.environment]
+conda = "envs/python.yaml"
+
+[[rules]]
+name = "build_full_locus_map"
+description = "Build the unfiltered repeat map (SQuIRE reference)"
+input = ["{config.rmsk_table}"]
+output = ["{config.out_dir}/annotation/te_locus_map_full.tsv"]
+log = "{config.out_dir}/logs/annotation/build_full_locus_map.log"
+shell = """
+mkdir -p "$(dirname {output[0]})" "$(dirname {log})"
+# "-" as family list disables the filter; "-" as GTF/EXON skips writing them
+python3 scripts/build_locus_from_rmsk.py {input[0]} - - {output[0]} - \
+    "{config.chroms}" 2> {log}
+"""
+
+[rules.resources]
+threads = 1
+
+[rules.environment]
+conda = "envs/python.yaml"
+
+[[rules]]
+name = "squire_clean_folder"
+description = "Write SQuIRE's clean_folder from the full repeat map"
+input = ["{config.out_dir}/annotation/te_locus_map_full.tsv"]
+output = [
+    "{config.out_dir}/annotation/squire_clean/hg38_all.bed",
+    "{config.out_dir}/annotation/squire_clean/hg38_all_copies.txt",
+]
+log = "{config.out_dir}/logs/annotation/squire_clean_folder.log"
+shell = """
+mkdir -p "$(dirname {output[0]})" "$(dirname {log})"
+python3 scripts/make_squire_clean.py {input[0]} \
+    "{config.out_dir}/annotation/squire_clean" 2> {log}
+"""
+
+[rules.resources]
+threads = 1
+
+[rules.environment]
+conda = "envs/python.yaml"
+
+[[rules]]
+name = "ervmap_bed_sorted"
+description = "Put the ERVmap provirus BED in the contig order of the BAM"
+input = [
+    "{config.ervmap_bed}",
+    "{config.out_dir}/reference/genome.fa.fai",
+]
+output = ["{config.out_dir}/reference/ERVmap.sorted.bed"]
+log = "{config.out_dir}/logs/annotation/ervmap_bed_sort.log"
+shell = """
+mkdir -p "$(dirname {output[0]})" "$(dirname {log})"
+# The official BED is in lexicographic chromosome order (chr1, chr10, ...,
+# chr2). `bedtools coverage -sorted` compares that order with the BAM header
+# order and aborts mid-file when they differ, which silently truncates the
+# result. Sorting by the FASTA index makes the two agree.
+bedtools sort -faidx {input[1]} -i {input[0]} > {output[0]} 2> {log}
+"""
+
+[rules.resources]
+threads = 1
+
+[rules.environment]
+conda = "envs/bedtools.yaml"
+
+[[rules]]
+name = "ervmap_annotate"
+description = "Assign every ERVmap provirus the overlapping RepeatMasker ERV fragment with the largest overlap"
+input = [
+    "{config.out_dir}/reference/ERVmap.sorted.bed",
+    "{config.out_dir}/annotation/te_locus_map.tsv",
+]
+output = ["{config.out_dir}/annotation/ervmap_annotation.tsv"]
+log = "{config.out_dir}/logs/annotation/ervmap_annotate.log"
+shell = """
+mkdir -p "$(dirname {output[0]})" "$(dirname {log})"
+python3 scripts/annotate_ervmap.py {input[0]} {input[1]} {output[0]} 2> {log}
+"""
+
+[rules.resources]
+threads = 1
+
+[rules.environment]
+conda = "envs/python.yaml"

@@ -1,0 +1,10 @@
+name: erv-squire
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  # SQuIRE 0.9.9.92 is the version the source project used
+  - squire=0.9.9.92
+  - bedtools=2.31.1
+  - samtools=1.15
+  - python=3.10

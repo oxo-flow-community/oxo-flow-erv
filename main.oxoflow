@@ -1,0 +1,133 @@
+# oxo-flow-erv — ERV / transposable-element quantification with four tools
+#
+# One DAG, four tools on one annotation:
+#
+#   FASTQ -> fastp -> STAR -> samtools sort/index ------------> featureCounts
+#                          |-> ERVmap   (strict unique STAR + bedtools coverage)
+#                          |-> Telescope (collate + EM assignment)
+#                          |-> TEcount   (gene + TE competition)
+#                          |-> SQuIRE    (Count on a pre-built clean_folder)
+#                                   \-> aggregate (long table, QC, evidence)
+#
+# Run one stage only with -t: `oxo-flow run main.oxoflow -t ervmap` (rule names
+# are namespaced alignment::* / annotation::* / ervmap::* / telescope::* /
+# tetranscripts::* / squire::* / aggregate::*).
+#
+# Ported from SunPast/ERV-pipeline (Snakemake, MIT).  The Snakemake version
+# imported ERVmap results instead of computing them; here ERVmap is a real rule
+# that runs the official wrapper's commands (see modules/ervmap.oxoflow).
+#
+# Reference data: test/fixtures/reference is a tiny synthetic kit (20 kb genome,
+# 3 genes, 10 ERV fragments, 4 proviruses) so a fresh clone can be validated
+# without downloading hg38.  Point the keys in [config] at real files for a
+# production run; see README "Requirements".
+
+[workflow]
+name = "erv"
+version = "1.0.0"
+description = "ERV / transposable-element quantification from RNA-seq: ERVmap, Telescope, TEtranscripts (TEcount) and SQuIRE on one RepeatMasker-derived annotation, plus gene-level featureCounts and a unified long table."
+author = "oxo-flow-community"
+min_version = "0.13.1"
+genome_build = "hg38"
+
+[config]
+# --- library layout ---
+layout = "pe"                                  # pe | se
+
+# --- input / output ---
+reads_dir = "test/fixtures/raw"                # {sample}_1.fastq.gz [, {sample}_2.fastq.gz]
+out_dir = "results"
+
+# --- reference (tiny synthetic kit; real hg38 for production) ---
+genome_fa = "test/fixtures/reference/genome.fa"
+gene_gtf = "test/fixtures/reference/genes.gtf"
+rmsk_table = "test/fixtures/reference/rmsk.txt"
+ervmap_bed = "test/fixtures/reference/ERVmap.bed"
+star_index_dir = "test/fixtures/reference/STAR_index"
+
+# ERV definition: the four repFamily values of the RepeatMasker table.  These
+# are exactly the families of the source project's 550-subfamily dictionary
+# (ERV1 300, ERVL 124, ERVL-MaLR 84, ERVK 42), so no dictionary file is needed.
+erv_families = "ERV1,ERVK,ERVL,ERVL-MaLR"
+chroms = "^chr([0-9]+|X|Y)$"
+
+# --- fastp (parameters inherited from the TCASIA-aligned alignment stage) ---
+fastp_min_length = 36
+fastp_qualified_quality_phred = 20
+fastp_unqualified_percent_limit = 40
+fastp_n_base_limit = 5
+
+# --- STAR (genome alignment for the three RepeatMasker-based tools) ---
+star_out_filter_mismatch_nmax = 15
+# 0 = do not pass --limitBAMsortRAM (STAR then sizes it itself).  The source
+# pipeline pinned ~36 GB; set a byte count to reproduce that exactly.
+star_limit_bam_sort_ram = 0
+
+# --- ERVmap STAR (official parameters; change only if you know why) ---
+ervmap_multimap_nmax = 1
+ervmap_mismatch_nover_lmax = 0.02
+ervmap_align_intron_min = 20
+ervmap_align_intron_max = 1000000
+ervmap_align_mates_gap_max = 1000000
+
+# --- Telescope ---
+telescope_max_iter = 200
+telescope_theta_prior = 0.01
+telescope_ncpu = 1
+
+# --- SQuIRE ---
+squire_read_length = 100
+squire_build = "hg38"
+
+# --- aggregation ---
+# a subfamily counts as "supported by a tool" when any sample reaches this count
+min_count = 1
+
+# === Auto-built references ===
+# NB: this engine (0.13.1) does not expand placeholders inside `build`, so the
+# paths below are written out in full.  Keep them in sync with [config].
+[[references]]
+name = "star_index_dir"
+source = "test/fixtures/reference/genome.fa"
+# Sentinel file: a half-built index directory must not satisfy freshness.
+output = "test/fixtures/reference/STAR_index/genomeParameters.txt"
+# --genomeSAindexNbases 6 is sized for the 20 kb synthetic genome.
+# For GRCh38 use 14 (STAR's default) and --sjdbOverhang 149 (or read length-1).
+build = "mkdir -p test/fixtures/reference/STAR_index && STAR --runMode genomeGenerate --genomeDir test/fixtures/reference/STAR_index --genomeFastaFiles test/fixtures/reference/genome.fa --sjdbGTFfile test/fixtures/reference/genes.gtf --sjdbOverhang 99 --genomeSAindexNbases 6 --runThreadN 8"
+threads = 8
+memory = "16G"
+
+[references.environment]
+conda = "envs/star.yaml"
+
+[[sample_groups]]
+name = "cohort"
+samples = ["sample_01", "sample_02"]
+
+[[include]]
+path = "modules/alignment.oxoflow"
+namespace = "alignment"
+
+[[include]]
+path = "modules/annotation.oxoflow"
+namespace = "annotation"
+
+[[include]]
+path = "modules/ervmap.oxoflow"
+namespace = "ervmap"
+
+[[include]]
+path = "modules/telescope.oxoflow"
+namespace = "telescope"
+
+[[include]]
+path = "modules/tetranscripts.oxoflow"
+namespace = "tetranscripts"
+
+[[include]]
+path = "modules/squire.oxoflow"
+namespace = "squire"
+
+[[include]]
+path = "modules/aggregate.oxoflow"
+namespace = "aggregate"

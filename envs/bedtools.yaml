@@ -1,0 +1,8 @@
+name: erv-bedtools
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  # ERVmap "Finding ERVs" step: bedtools coverage -sorted
+  - bedtools=2.31.1
+  - samtools=1.15

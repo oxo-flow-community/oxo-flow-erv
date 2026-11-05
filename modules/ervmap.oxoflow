@@ -1,0 +1,154 @@
+# ERVmap — provirus-level quantification, run here instead of imported.
+#
+# The method is the official ERVmap wrapper (ervmap.1.2.1 image, script
+# /scripts/ERVmapping.sh, mode ALL) executed with its own parameters:
+#
+#   STAR --outSAMtype BAM SortedByCoordinate
+#        --outFilterMultimapNmax 1            # unique alignments only
+#        --outFilterMismatchNmax 999
+#        --outFilterMismatchNoverLmax 0.02    # <= 2% mismatch rate
+#        --alignIntronMin 20 --alignIntronMax 1000000 --alignMatesGapMax 1000000
+#   samtools index
+#   coverageBed -nonamecheck -a ERVmap.bed -b <bam> -counts -sorted
+#
+# Two things are easy to get wrong and are handled explicitly here:
+#
+#   * the reads are aligned to the GENOME, not to a provirus multi-fasta, and
+#     the 3,220 provirus intervals are only used for counting.  The image ships
+#     hg38 as /genome; this rule points --genomeDir at the workflow's index.
+#   * the BED must be sorted in the BAM's contig order (modules/annotation).
+#     `-nonamecheck` disables the chromosome-name check, so a name or order
+#     mismatch does not fail — it writes 3,220 zero rows and looks like a
+#     successful run.  The QC table flags that case as ZERO_COUNTS.
+#
+# Single-end: the official wrapper requires --read1 and --read2.  The
+# single-end variant is the same STAR command with one input file; this is a
+# documented deviation (layout = "se").
+#
+# The BED used here has a "chr" prefix; the untouched official file does not.
+# Adding the prefix is the only change (verified in the source project: the
+# union of the healthy per-sample provirus sets is exactly the official BED).
+
+[workflow]
+name = "erv-ervmap"
+version = "1.0.0"
+description = "ERVmap provirus-level quantification: strict unique STAR alignment + coverage over the official 3,220-provirus BED."
+author = "oxo-flow-community"
+
+[[rules]]
+name = "ervmap_star_pe"
+when = "config.layout == 'pe'"
+description = "ERVmap alignment: unique, <=2% mismatch, coordinate-sorted (paired-end)"
+input = [
+    "{config.reads_dir}/{sample}_1.fastq.gz",
+    "{config.reads_dir}/{sample}_2.fastq.gz",
+    "{config.star_index_dir}/genomeParameters.txt",
+]
+output = [
+    "{config.out_dir}/ervmap/{sample}/{sample}.Aligned.sortedByCoord.out.bam",
+    "{config.out_dir}/ervmap/{sample}/{sample}.Aligned.sortedByCoord.out.bam.bai",
+]
+log = "{config.out_dir}/logs/ervmap/{sample}.align.log"
+shell = """
+mkdir -p {config.out_dir}/ervmap/{sample} "$(dirname {log})"
+STAR --genomeDir {config.star_index_dir} --runThreadN {threads} \
+    --outSAMtype BAM SortedByCoordinate \
+    --outFilterMultimapNmax {config.ervmap_multimap_nmax} \
+    --outFilterMismatchNmax 999 \
+    --outFilterMismatchNoverLmax {config.ervmap_mismatch_nover_lmax} \
+    --alignIntronMin {config.ervmap_align_intron_min} \
+    --alignIntronMax {config.ervmap_align_intron_max} \
+    --alignMatesGapMax {config.ervmap_align_mates_gap_max} \
+    --readFilesIn {input[0]} {input[1]} \
+    --readFilesCommand zcat \
+    --outFileNamePrefix {config.out_dir}/ervmap/{sample}/{sample}. \
+    > {log} 2>&1
+samtools index -@ {threads} {output[0]} {output[1]} >> {log} 2>&1
+"""
+
+[rules.resources]
+threads = 9
+memory = "32G"
+
+[rules.environment]
+conda = "envs/star.yaml"
+
+[[rules]]
+name = "ervmap_star_se"
+when = "config.layout == 'se'"
+description = "ERVmap alignment: unique, <=2% mismatch, coordinate-sorted (single-end)"
+input = [
+    "{config.reads_dir}/{sample}_1.fastq.gz",
+    "{config.star_index_dir}/genomeParameters.txt",
+]
+output = [
+    "{config.out_dir}/ervmap/{sample}/{sample}.Aligned.sortedByCoord.out.bam",
+    "{config.out_dir}/ervmap/{sample}/{sample}.Aligned.sortedByCoord.out.bam.bai",
+]
+log = "{config.out_dir}/logs/ervmap/{sample}.align.log"
+shell = """
+mkdir -p {config.out_dir}/ervmap/{sample} "$(dirname {log})"
+STAR --genomeDir {config.star_index_dir} --runThreadN {threads} \
+    --outSAMtype BAM SortedByCoordinate \
+    --outFilterMultimapNmax {config.ervmap_multimap_nmax} \
+    --outFilterMismatchNmax 999 \
+    --outFilterMismatchNoverLmax {config.ervmap_mismatch_nover_lmax} \
+    --alignIntronMin {config.ervmap_align_intron_min} \
+    --alignIntronMax {config.ervmap_align_intron_max} \
+    --alignMatesGapMax {config.ervmap_align_mates_gap_max} \
+    --readFilesIn {input[0]} \
+    --readFilesCommand zcat \
+    --outFileNamePrefix {config.out_dir}/ervmap/{sample}/{sample}. \
+    > {log} 2>&1
+samtools index -@ {threads} {output[0]} {output[1]} >> {log} 2>&1
+"""
+
+[rules.resources]
+threads = 9
+memory = "32G"
+
+[rules.environment]
+conda = "envs/star.yaml"
+
+[[rules]]
+name = "ervmap_count"
+description = "Count reads per provirus with bedtools coverage (ERVmap 'Finding ERVs' step)"
+input = [
+    "{config.out_dir}/ervmap/{sample}/{sample}.Aligned.sortedByCoord.out.bam",
+    "{config.out_dir}/reference/ERVmap.sorted.bed",
+]
+output = ["{config.out_dir}/ervmap/{sample}/{sample}ERVresults.txt"]
+log = "{config.out_dir}/logs/ervmap/{sample}.count.log"
+shell = """
+mkdir -p "$(dirname {output[0]})" "$(dirname {log})"
+bedtools coverage -nonamecheck -a {input[1]} -b {input[0]} -counts -sorted \
+    > {output[0]} 2> {log}
+test -s {output[0]} || { echo "empty ERVmap output" >&2; exit 1; }
+"""
+
+[rules.resources]
+threads = 1
+memory = "8G"
+
+[rules.environment]
+conda = "envs/bedtools.yaml"
+
+[[rules]]
+name = "ervmap_normalize"
+description = "Put raw ERVmap output on the common locus table"
+input = [
+    "{config.out_dir}/ervmap/{sample}/{sample}ERVresults.txt",
+    "{config.out_dir}/annotation/ervmap_annotation.tsv",
+]
+output = ["{config.out_dir}/ervmap/{sample}/{sample}.locus.tsv"]
+log = "{config.out_dir}/logs/ervmap/{sample}.normalize.log"
+shell = """
+mkdir -p "$(dirname {output[0]})" "$(dirname {log})"
+python3 scripts/normalize_ervmap.py {input[0]} {input[1]} {output[0]} 2> {log}
+"""
+
+[rules.resources]
+threads = 1
+
+[rules.environment]
+conda = "envs/python.yaml"

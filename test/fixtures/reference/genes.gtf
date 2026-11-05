@@ -1,0 +1,10 @@
+chr1	synth	transcript	501	1400	.	+	.	gene_id "g1"; transcript_id "g1_T1";
+chr1	synth	exon	501	700	.	+	.	gene_id "g1"; transcript_id "g1_T1"; exon_number "1";
+chr1	synth	exon	901	1100	.	+	.	gene_id "g1"; transcript_id "g1_T1"; exon_number "2";
+chr1	synth	exon	1301	1400	.	+	.	gene_id "g1"; transcript_id "g1_T1"; exon_number "3";
+chr1	synth	transcript	4601	5900	.	-	.	gene_id "g2"; transcript_id "g2_T1";
+chr1	synth	exon	4601	4900	.	-	.	gene_id "g2"; transcript_id "g2_T1"; exon_number "1";
+chr1	synth	exon	5601	5900	.	-	.	gene_id "g2"; transcript_id "g2_T1"; exon_number "2";
+chr2	synth	transcript	2701	3900	.	+	.	gene_id "g3"; transcript_id "g3_T1";
+chr2	synth	exon	2701	3100	.	+	.	gene_id "g3"; transcript_id "g3_T1"; exon_number "1";
+chr2	synth	exon	3501	3900	.	+	.	gene_id "g3"; transcript_id "g3_T1"; exon_number "2";

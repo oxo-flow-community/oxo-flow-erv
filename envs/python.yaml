@@ -1,0 +1,8 @@
+name: erv-python
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  # annotation builders, ERVmap normalisation and the aggregation scripts
+  # (standard library only — no pandas/scipy needed)
+  - python=3.10

@@ -1,0 +1,46 @@
+# TEtranscripts / TEcount — locus-level quantification, one sample at a time.
+#
+# TEcount is the per-sample counter shipped with TEtranscripts; no control
+# sample is needed here (that is only for the `TEtranscripts` differential step).
+# It is given the gene GTF and the ERV exon GTF, so gene and TE reads are
+# assigned in one pass and compete against each other, as the tool intends.
+#
+# TEcount writes its coordinate-sorted temporary BAM into the process working
+# directory, so the job runs inside a scratch directory instead of writing a
+# multi-GB file next to the results.
+
+[workflow]
+name = "erv-tetranscripts"
+version = "1.0.0"
+description = "TEcount locus-level ERV quantification with gene+TE competition."
+author = "oxo-flow-community"
+
+[[rules]]
+name = "tetranscripts_count"
+description = "Run TEcount on the coordinate-sorted BAM"
+input = [
+    "{config.out_dir}/bam/{sample}/{sample}.sorted.bam",
+    "{config.gene_gtf}",
+    "{config.out_dir}/annotation/te_locus.exon.gtf",
+]
+output = ["{config.out_dir}/tetranscripts/{sample}/{sample}.cntTable"]
+log = "{config.out_dir}/logs/tetranscripts/{sample}.log"
+shell = """
+mkdir -p {config.out_dir}/tetranscripts/{sample} {config.out_dir}/_tmp "$(dirname {log})"
+TMP={config.out_dir}/_tmp/{sample}.tecount
+rm -rf "$TMP" && mkdir -p "$TMP" && cd "$TMP"
+export TMPDIR="$TMP"
+TEcount --sortByPos --format BAM --mode multi \
+    -b {input[0]} \
+    --GTF {input[1]} --TE {input[2]} \
+    --project {sample} \
+    --outdir {config.out_dir}/tetranscripts/{sample} >> {log} 2>&1
+cd / && rm -rf "$TMP"
+"""
+
+[rules.resources]
+threads = 1
+memory = "8G"
+
+[rules.environment]
+conda = "envs/tetranscripts.yaml"

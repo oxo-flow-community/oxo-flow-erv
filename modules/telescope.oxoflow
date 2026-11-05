@@ -1,0 +1,50 @@
+# Telescope — locus-level quantification from a name-collated BAM.
+#
+# Telescope assigns each multi-mapping read to one of its candidate loci with an
+# EM, so it wants read pairs adjacent in the BAM: `samtools collate` first,
+# then `telescope assign`.  The annotation is the same te_locus.gtf the other
+# tools use (one RepeatMasker fragment = one locus), which is exactly the
+# "modifications to the annotation ... to allow locus-specific quantification"
+# the Telescope paper describes — no tool code is patched.
+#
+# Output: {sample}.report.tsv, whose col0 is the locus id and col2 the final
+# count.  It also carries a "## RunInfo" header line and "#"-prefixed notices;
+# the aggregation step skips both.
+
+[workflow]
+name = "erv-telescope"
+version = "1.0.0"
+description = "Telescope EM assignment of multi-mapping reads to ERV loci."
+author = "oxo-flow-community"
+
+[[rules]]
+name = "telescope_assign"
+description = "Collate the BAM and run telescope assign"
+input = [
+    "{config.out_dir}/bam/{sample}/{sample}.sorted.bam",
+    "{config.out_dir}/annotation/te_locus.gtf",
+]
+output = ["{config.out_dir}/telescope/{sample}/{sample}.report.tsv"]
+log = "{config.out_dir}/logs/telescope/{sample}.log"
+shell = """
+mkdir -p {config.out_dir}/telescope/{sample} {config.out_dir}/_tmp "$(dirname {log})"
+TMP={config.out_dir}/_tmp/{sample}.telescope
+rm -rf "$TMP" && mkdir -p "$TMP"
+export TMPDIR="$TMP"
+samtools collate -@ {threads} -n 8 -l 6 -o "$TMP/collated.bam" {input[0]} >> {log} 2>&1
+telescope assign --outdir {config.out_dir}/telescope/{sample} \
+    --exp_tag {sample} \
+    --ncpu {config.telescope_ncpu} \
+    --max_iter {config.telescope_max_iter} \
+    --theta_prior {config.telescope_theta_prior} \
+    "$TMP/collated.bam" {input[1]} >> {log} 2>&1
+mv -f {config.out_dir}/telescope/{sample}/{sample}-telescope_report.tsv {output[0]}
+rm -rf "$TMP"
+"""
+
+[rules.resources]
+threads = 2
+memory = "8G"
+
+[rules.environment]
+conda = "envs/telescope.yaml"

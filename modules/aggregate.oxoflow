@@ -1,0 +1,68 @@
+# Aggregation layer: four tools -> one long table + QC + subfamily evidence.
+#
+# Why this cannot be done in a viewer: the long table has one row per locus per
+# tool per sample (hundreds of thousands of loci), and the evidence definition is
+# a cross-tool statement that has to be fixed in one place or the numbers change
+# on every refresh.
+#
+# Per-sample tables are produced first (one job per sample, all four tools
+# already on disk at that point); merge_aggregate then concatenates them and
+# computes the cohort-level products.  The merge job has no file input of its
+# own, so it declares `depends_on` to wait for every per-sample job.
+
+[workflow]
+name = "erv-aggregate"
+version = "1.0.0"
+description = "Unified ERV expression long table, per-sample QC and subfamily evidence across the four tools."
+author = "oxo-flow-community"
+
+[[rules]]
+name = "aggregate_sample"
+description = "Put one sample's four tool outputs on the common long table"
+input = [
+    "{config.out_dir}/telescope/{sample}/{sample}.report.tsv",
+    "{config.out_dir}/tetranscripts/{sample}/{sample}.cntTable",
+    "{config.out_dir}/squire/{sample}/{sample}_TEcounts.txt",
+    "{config.out_dir}/squire/{sample}/{sample}_subFcounts.txt",
+    "{config.out_dir}/ervmap/{sample}/{sample}.locus.tsv",
+    "{config.out_dir}/annotation/te_locus_map.tsv",
+    "{config.out_dir}/annotation/ervmap_annotation.tsv",
+]
+output = ["{config.out_dir}/aggregate/per_sample/{sample}.long.tsv.gz"]
+log = "{config.out_dir}/logs/aggregate/{sample}.log"
+shell = """
+mkdir -p {config.out_dir}/aggregate/per_sample "$(dirname {log})"
+python3 scripts/aggregate_expression.py {config.out_dir} {sample} \
+    {input[5]} {input[6]} 2> {log}
+"""
+
+[rules.resources]
+threads = 1
+memory = "8G"
+
+[rules.environment]
+conda = "envs/python.yaml"
+
+[[rules]]
+name = "merge_aggregate"
+description = "Merge per-sample long tables, compute QC and subfamily evidence"
+depends_on = ["aggregate_sample"]
+input = []
+output = [
+    "{config.out_dir}/aggregate/erv_expression_long.tsv.gz",
+    "{config.out_dir}/aggregate/qc_per_sample.tsv",
+    "{config.out_dir}/aggregate/erv_subfamily_evidence.tsv.gz",
+]
+log = "{config.out_dir}/logs/aggregate/merge.log"
+shell = """
+mkdir -p {config.out_dir}/aggregate "$(dirname {log})"
+python3 scripts/merge_expression.py {config.out_dir}/aggregate/per_sample \
+    {config.out_dir} {config.min_count} 2> {log}
+"""
+
+[rules.resources]
+threads = 1
+memory = "4G"
+
+[rules.environment]
+conda = "envs/python.yaml"

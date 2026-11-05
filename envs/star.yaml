@@ -1,0 +1,9 @@
+name: erv-star
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  # the genome index and every STAR alignment in the workflow
+  - star=2.7.7a
+  - samtools=1.15
+  - python=3.10

@@ -1,0 +1,234 @@
+# FASTQ -> coordinate-sorted BAM + gene counts.
+#
+#   fastp -> STAR -> samtools sort/index -> featureCounts
+#
+# Both layouts are implemented as separate rules gated on `layout`:
+#   layout = "pe"  fastp_pe / star_align_pe / featurecounts_pe
+#   layout = "se"  fastp_se / star_align_se / featurecounts_se
+# Only one variant of each is active per run; the downstream (ERV) stage reads
+# the same bam/{sample}/{sample}.sorted.bam in both cases.
+#
+# Versions and parameters follow the TCASIA alignment stage the source pipeline
+# was aligned to (fastp 0.23.4, STAR 2.7.7a, samtools 1.15, subread 2.0.1).
+
+[workflow]
+name = "erv-alignment"
+version = "1.0.0"
+description = "fastp QC -> STAR alignment -> samtools sort/index -> featureCounts (paired- or single-end)."
+author = "oxo-flow-community"
+
+[[rules]]
+name = "fastp_pe"
+when = "config.layout == 'pe'"
+description = "Trim and quality-filter paired reads with fastp"
+input = [
+    "{config.reads_dir}/{sample}_1.fastq.gz",
+    "{config.reads_dir}/{sample}_2.fastq.gz",
+]
+output = [
+    "{config.out_dir}/fastp/{sample}/{sample}.trim.R1.fastq.gz",
+    "{config.out_dir}/fastp/{sample}/{sample}.trim.R2.fastq.gz",
+    "{config.out_dir}/fastp/{sample}/{sample}_fastp.html",
+    "{config.out_dir}/fastp/{sample}/{sample}_fastp.json",
+]
+log = "{config.out_dir}/logs/fastp/{sample}.log"
+shell = """
+mkdir -p "$(dirname {output[0]})" "$(dirname {log})"
+fastp -i {input[0]} -I {input[1]} -o {output[0]} -O {output[1]} \
+    --html {output[2]} --json {output[3]} \
+    --length_required {config.fastp_min_length} \
+    --qualified_quality_phred {config.fastp_qualified_quality_phred} \
+    --unqualified_percent_limit {config.fastp_unqualified_percent_limit} \
+    --n_base_limit {config.fastp_n_base_limit} \
+    --thread {threads} --detect_adapter_for_pe > {log} 2>&1
+"""
+
+[rules.resources]
+threads = 8
+
+[rules.environment]
+conda = "envs/fastp.yaml"
+
+[[rules]]
+name = "fastp_se"
+when = "config.layout == 'se'"
+description = "Trim and quality-filter single-end reads with fastp"
+input = ["{config.reads_dir}/{sample}_1.fastq.gz"]
+output = [
+    "{config.out_dir}/fastp/{sample}/{sample}.trim.R1.fastq.gz",
+    "{config.out_dir}/fastp/{sample}/{sample}_fastp.html",
+    "{config.out_dir}/fastp/{sample}/{sample}_fastp.json",
+]
+log = "{config.out_dir}/logs/fastp/{sample}.log"
+shell = """
+mkdir -p "$(dirname {output[0]})" "$(dirname {log})"
+fastp -i {input[0]} -o {output[0]} \
+    --html {output[1]} --json {output[2]} \
+    --length_required {config.fastp_min_length} \
+    --qualified_quality_phred {config.fastp_qualified_quality_phred} \
+    --unqualified_percent_limit {config.fastp_unqualified_percent_limit} \
+    --n_base_limit {config.fastp_n_base_limit} \
+    --thread {threads} > {log} 2>&1
+"""
+
+[rules.resources]
+threads = 8
+
+[rules.environment]
+conda = "envs/fastp.yaml"
+
+[[rules]]
+name = "star_align_pe"
+when = "config.layout == 'pe'"
+description = "STAR alignment of paired reads (gene counts requested)"
+input = [
+    "{config.out_dir}/fastp/{sample}/{sample}.trim.R1.fastq.gz",
+    "{config.out_dir}/fastp/{sample}/{sample}.trim.R2.fastq.gz",
+    "{config.star_index_dir}/genomeParameters.txt",
+]
+output = [
+    "{config.out_dir}/star/{sample}/Aligned.out.bam",
+    "{config.out_dir}/star/{sample}/{sample}_Log.final.out",
+]
+log = "{config.out_dir}/logs/star/{sample}.log"
+shell = """
+mkdir -p {config.out_dir}/star/{sample} "$(dirname {log})"
+RAM={config.star_limit_bam_sort_ram}
+RAM_ARG=""
+[ "$RAM" -gt 0 ] && RAM_ARG="--limitBAMsortRAM $RAM"
+STAR --runThreadN {threads} \
+     --genomeDir {config.star_index_dir} \
+     --readFilesIn {input[0]} {input[1]} \
+     --outFileNamePrefix {config.out_dir}/star/{sample}/{sample}_ \
+     --outSAMunmapped Within \
+     --readFilesCommand zcat \
+     --outFilterMismatchNmax {config.star_out_filter_mismatch_nmax} \
+     --outSAMattributes All \
+     --outStd Log \
+     --outSAMtype BAM Unsorted \
+     --outFilterIntronMotifs RemoveNoncanonical \
+     --outSAMstrandField intronMotif \
+     --twopassMode Basic \
+     --quantMode GeneCounts \
+     $RAM_ARG > {log} 2>&1
+"""
+
+[rules.resources]
+threads = 10
+memory = "32G"
+
+[rules.environment]
+conda = "envs/star.yaml"
+
+[[rules]]
+name = "star_align_se"
+when = "config.layout == 'se'"
+description = "STAR alignment of single-end reads (gene counts requested)"
+input = [
+    "{config.out_dir}/fastp/{sample}/{sample}.trim.R1.fastq.gz",
+    "{config.star_index_dir}/genomeParameters.txt",
+]
+output = [
+    "{config.out_dir}/star/{sample}/Aligned.out.bam",
+    "{config.out_dir}/star/{sample}/{sample}_Log.final.out",
+]
+log = "{config.out_dir}/logs/star/{sample}.log"
+shell = """
+mkdir -p {config.out_dir}/star/{sample} "$(dirname {log})"
+RAM={config.star_limit_bam_sort_ram}
+RAM_ARG=""
+[ "$RAM" -gt 0 ] && RAM_ARG="--limitBAMsortRAM $RAM"
+STAR --runThreadN {threads} \
+     --genomeDir {config.star_index_dir} \
+     --readFilesIn {input[0]} \
+     --outFileNamePrefix {config.out_dir}/star/{sample}/{sample}_ \
+     --outSAMunmapped Within \
+     --readFilesCommand zcat \
+     --outFilterMismatchNmax {config.star_out_filter_mismatch_nmax} \
+     --outSAMattributes All \
+     --outStd Log \
+     --outSAMtype BAM Unsorted \
+     --outFilterIntronMotifs RemoveNoncanonical \
+     --outSAMstrandField intronMotif \
+     --twopassMode Basic \
+     --quantMode GeneCounts \
+     $RAM_ARG > {log} 2>&1
+"""
+
+[rules.resources]
+threads = 10
+memory = "32G"
+
+[rules.environment]
+conda = "envs/star.yaml"
+
+[[rules]]
+name = "samtools_sort"
+description = "Coordinate-sort the STAR alignment and index it"
+input = ["{config.out_dir}/star/{sample}/Aligned.out.bam"]
+output = [
+    "{config.out_dir}/bam/{sample}/{sample}.sorted.bam",
+    "{config.out_dir}/bam/{sample}/{sample}.sorted.bam.bai",
+]
+log = "{config.out_dir}/logs/samtools/{sample}.sort.log"
+shell = """
+mkdir -p "$(dirname {output[0]})" "$(dirname {log})" {config.out_dir}/_tmp
+# -m 512M: sort's default 768M per thread over-allocates on many-core boxes
+samtools sort -@ {threads} -m 512M -T {config.out_dir}/_tmp/{sample}.sort \
+    -o {output[0]} {input[0]} > {log} 2>&1
+samtools index -@ {threads} {output[0]} {output[1]} >> {log} 2>&1
+rm -f {config.out_dir}/_tmp/{sample}.sort.*
+"""
+
+[rules.resources]
+threads = 8
+memory = "8G"
+
+[rules.environment]
+conda = "envs/samtools.yaml"
+
+[[rules]]
+name = "featurecounts_pe"
+when = "config.layout == 'pe'"
+description = "Count reads per gene with featureCounts (paired-end)"
+input = [
+    "{config.out_dir}/bam/{sample}/{sample}.sorted.bam",
+    "{config.gene_gtf}",
+]
+output = ["{config.out_dir}/gene_counts/{sample}/{sample}_featureCounts.txt"]
+log = "{config.out_dir}/logs/featurecounts/{sample}.log"
+shell = """
+mkdir -p "$(dirname {output[0]})" "$(dirname {log})"
+# -s 0 on purpose: the source pipeline's TCASIA-compatible gene matrices were
+# built unstranded, so new samples stay comparable with them.
+featureCounts -T {threads} -p -s 0 -t exon -g gene_id \
+    -a {input[1]} -o {output[0]} {input[0]} > {log} 2>&1
+"""
+
+[rules.resources]
+threads = 8
+
+[rules.environment]
+conda = "envs/subread.yaml"
+
+[[rules]]
+name = "featurecounts_se"
+when = "config.layout == 'se'"
+description = "Count reads per gene with featureCounts (single-end)"
+input = [
+    "{config.out_dir}/bam/{sample}/{sample}.sorted.bam",
+    "{config.gene_gtf}",
+]
+output = ["{config.out_dir}/gene_counts/{sample}/{sample}_featureCounts.txt"]
+log = "{config.out_dir}/logs/featurecounts/{sample}.log"
+shell = """
+mkdir -p "$(dirname {output[0]})" "$(dirname {log})"
+featureCounts -T {threads} -s 0 -t exon -g gene_id \
+    -a {input[1]} -o {output[0]} {input[0]} > {log} 2>&1
+"""
+
+[rules.resources]
+threads = 8
+
+[rules.environment]
+conda = "envs/subread.yaml"

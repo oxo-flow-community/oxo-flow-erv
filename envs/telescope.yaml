@@ -1,0 +1,8 @@
+name: erv-telescope
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - telescope=1.0.3
+  # samtools collate runs in the same job (same build as the source project)
+  - samtools=1.18
