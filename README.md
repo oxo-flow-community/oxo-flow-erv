@@ -175,13 +175,34 @@ Two failure modes are handled explicitly because they are silent:
 
 ## Verification status
 
-- `oxo-flow validate` / `lint` / `dry-run` (paired- and single-end) pass on
-  oxo-flow 0.13.1; `test/run.sh` also executes the annotation, SQuIRE-clean and
-  ERVmap-annotation scripts against the fixtures.
-- A **full live run of all four tools on the fixtures has not been performed**
-  — it needs the conda environments and STAR/Telescope/TEcount/SQuIRE
-  installations. `metadata.json` therefore records `rating: dry-run-verified`
-  rather than claiming a live result.
+`oxo-flow validate` / `lint` / `dry-run` (paired- and single-end) pass on
+oxo-flow 0.13.1, and `test/run.sh` also executes the annotation, SQuIRE-clean
+and ERVmap-annotation scripts against the fixtures.
+
+A live run on the synthetic fixtures was performed with STAR 2.7.7a,
+samtools 1.15, fastp 0.23.4, subread 2.0.1, bedtools 2.31.1, telescope 1.0.3
+and TEtranscripts 2.2.3. These stages produced non-zero, biologically
+consistent output:
+
+| Stage | Result on the fixtures |
+|---|---|
+| annotation | 10 ERV loci (6 internal / 4 LTR), 4 proviruses annotated |
+| alignment + featureCounts | 2 samples, genes g1/g2/g3 counted |
+| ERVmap | 4/4 proviruses with non-zero counts, subfamily assigned (MER41-int/ERV1, HERVK-int/ERVK) |
+| Telescope | 10 features, 400 fragments, counts 59/51/44/14/… |
+| TEcount | 10 ERV loci + 3 genes, counts matching the GTF locus ids |
+| aggregation | long table (3 tools), QC table and subfamily evidence built on the real outputs |
+
+The live run found four defects that dry-run could not: a STAR output name that
+did not match the declared output, `--theta_prior` needing an integer, TEcount's
+relative `--outdir` being deleted with the scratch directory, and tool failures
+masked by a trailing `rm -rf`. All four are fixed in the rules above.
+
+**SQuIRE was not run live**: `squire=0.9.9.92` could not be installed in the
+verification environment (conda dependency conflict) and the container image is
+not available there. Its command is copied from the source pipeline, where
+`squire Count` was verified on real data, but this repository has not executed
+it. `metadata.json` therefore records `rating: dry-run-verified`.
 
 ## Source
 
