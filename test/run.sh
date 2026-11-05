@@ -20,12 +20,15 @@ echo "==> dry-run, single-end"
 grep -qE "would (execute|run)" /tmp/oxo-erv-dryrun-se-$$.txt
 
 echo "==> the two layouts select different alignment rules"
-# a skipped rule is still listed in the plan, so match the "when condition false"
-# marker rather than the rule name or its run/skip state
-grep -q "fastp_se.*\[skip: when condition false\]" /tmp/oxo-erv-dryrun-pe-$$.txt
-grep -q "fastp_pe.*\[skip: when condition false\]" /tmp/oxo-erv-dryrun-se-$$.txt
-! grep -q "fastp_pe.*\[skip: when condition false\]" /tmp/oxo-erv-dryrun-pe-$$.txt
-! grep -q "fastp_se.*\[skip: when condition false\]" /tmp/oxo-erv-dryrun-se-$$.txt
+# every rule appears in the plan, but the inactive variant must be skipped.
+# Assert on the run/skip marker, not on the reason text or the up-to-date
+# state, so the check also passes when a results/ tree already exists.
+grep -qE "fastp_pe.*\[(run|skip):" /tmp/oxo-erv-dryrun-pe-$$.txt
+grep -q "fastp_se.*\[skip" /tmp/oxo-erv-dryrun-pe-$$.txt
+! grep -q "fastp_se.*\[run:" /tmp/oxo-erv-dryrun-pe-$$.txt
+grep -qE "fastp_se.*\[(run|skip):" /tmp/oxo-erv-dryrun-se-$$.txt
+grep -q "fastp_pe.*\[skip" /tmp/oxo-erv-dryrun-se-$$.txt
+! grep -q "fastp_pe.*\[run:" /tmp/oxo-erv-dryrun-se-$$.txt
 
 echo "==> debug: expanded commands contain no literal placeholders"
 OUT=$("$OXO" debug main.oxoflow 2>&1)
