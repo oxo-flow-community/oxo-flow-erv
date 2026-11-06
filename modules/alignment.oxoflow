@@ -204,7 +204,10 @@ shell = """
 mkdir -p "$(dirname {output[0]})" "$(dirname {log})"
 # -s 0 on purpose: the source pipeline's TCASIA-compatible gene matrices were
 # built unstranded, so new samples stay comparable with them.
-featureCounts -T {threads} -p -s 0 -t exon -g gene_id \
+# -O: count a read for every gene it overlaps. Without it, shared reads are
+# dropped as Unassigned_Ambiguity — EEF1G is fully covered by the lncRNA
+# AP002990.1 on the same strand and lost almost all of its reads.
+featureCounts -T {threads} -p -O -s 0 -t exon -g gene_id \
     -a {input[1]} -o {output[0]} {input[0]} > {log} 2>&1
 """
 
@@ -226,7 +229,8 @@ output = ["{config.out_dir}/gene_counts/{group}/{sample}/{sample}_featureCounts.
 log = "{config.out_dir}/logs/featurecounts/{group}/{sample}.log"
 shell = """
 mkdir -p "$(dirname {output[0]})" "$(dirname {log})"
-featureCounts -T {threads} -s 0 -t exon -g gene_id \
+# -s 0 and -O on purpose (see featurecounts_pe)
+featureCounts -T {threads} -O -s 0 -t exon -g gene_id \
     -a {input[1]} -o {output[0]} {input[0]} > {log} 2>&1
 """
 
