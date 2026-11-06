@@ -40,7 +40,7 @@ fastp -i {input[0]} -I {input[1]} -o {output[0]} -O {output[1]} \
     --qualified_quality_phred {config.fastp_qualified_quality_phred} \
     --unqualified_percent_limit {config.fastp_unqualified_percent_limit} \
     --n_base_limit {config.fastp_n_base_limit} \
-    --thread {threads} --detect_adapter_for_pe > {log} 2>&1
+    --thread {threads} > {log} 2>&1
 """
 
 [rules.resources]
@@ -177,7 +177,7 @@ shell = """
 set -eo pipefail
 mkdir -p "$(dirname {output[0]})" "$(dirname {log})" {config.out_dir}/_tmp
 # -m 512M: sort's default 768M per thread over-allocates on many-core boxes
-samtools sort -@ {threads} -m 512M -T {config.out_dir}/_tmp/{group}.{sample}.sort \
+samtools sort -@ {threads} -m 2G -T {config.out_dir}/_tmp/{group}.{sample}.sort \
     -o {output[0]} {input[0]} > {log} 2>&1
 samtools index -@ {threads} {output[0]} {output[1]} >> {log} 2>&1
 rm -f {config.out_dir}/_tmp/{group}.{sample}.sort.*
