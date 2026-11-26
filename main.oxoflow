@@ -88,12 +88,17 @@ telescope_theta_prior = 200000
 telescope_ncpu = 1
 
 # --- SQuIRE ---
-squire_read_length = 100
+# 36 is the source default and the value hard-coded in the rerun scripts
+# (`squire Count --read_length 36`); set it to your actual read length otherwise.
+squire_read_length = 36
 squire_build = "hg38"
 
 # --- aggregation ---
-# a subfamily counts as "supported by a tool" when any sample reaches this count
-min_count = 1
+# a subfamily counts as "supported by a tool" when any sample reaches this count.
+# 2 is the source default, our platform-wide noise floor. It only affects
+# erv_subfamily_evidence.tsv (never the per-sample counts); set 1 to reproduce
+# the upstream raw-count comparison, which applied no threshold.
+min_count = 2
 
 # === Auto-built references ===
 # NB: this engine (0.13.1) does not expand placeholders inside `build`, so the
